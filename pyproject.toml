@@ -1,0 +1,12 @@
+[project]
+name = "ai-wireless-network-optimization"
+version = "0.1.0"
+description = "AI-driven wireless communication network optimization using NS-3 simulation and classical machine learning."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+

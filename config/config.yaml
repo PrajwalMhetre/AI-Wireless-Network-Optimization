@@ -1,0 +1,48 @@
+project:
+  name: AI-Driven Wireless Communication Network Optimization Using Machine Learning
+  short_name: AI-Based Wireless Network Optimization
+  random_seed: 42
+
+simulation:
+  simulator: ns-3
+  duration_s: 30
+  topology: single_ap_multi_user
+  access_points: 1
+  user_nodes: 10
+  channels: 3
+  bandwidth_hz: 20000000
+  traffic_rate_kbps: 1000
+  packet_size_bytes: 1024
+  transmission_power_dbm: 18
+  snr_range_db: [0, 30]
+  interference_dbm_range: [-95, -65]
+
+optimization:
+  primary_decision: channel_selection
+  baseline_policy: lowest_interference_channel
+  candidate_channels: [1, 6, 11]
+
+ml:
+  models: [random_forest, xgboost]
+  target: selected_channel
+  train_ratio: 0.8
+  validation_ratio: 0.1
+  test_ratio: 0.1
+
+experiments:
+  traffic_loads_kbps: [500, 1000, 2000]
+  interference_levels: [low, medium, high]
+  user_counts: [5, 10, 20]
+  snr_points_db: [5, 10, 15, 20, 25, 30]
+
+paths:
+  raw_data: data/raw
+  processed_data: data/processed
+  datasets: data/datasets
+  figures: results/figures
+  metrics: results/metrics
+  reports: results/reports
+
+logging:
+  level: INFO
+
