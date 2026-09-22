@@ -1,38 +1,63 @@
-# AI-Driven Wireless Communication Network Optimization Using Machine Learning
+# AURORA-RIS
 
-Short title: **AI-Based Wireless Network Optimization**
+Adaptive Uncertainty-Aware Self-Correcting RIS Optimization for dynamic 6G
+wireless networks.
 
-This repository is a final-year B.Tech Electronics and Communication Engineering project scaffold for studying whether machine-learning-based wireless-network decisions can improve system performance under changing network conditions.
+This repository contains a reproducible, research-oriented NumPy fallback
+simulation and an optional PyTorch GNN + GRU policy. The AURORA controller
+estimates model confidence and distribution shift, accepts safe predictions,
+or invokes a classical RIS phase refinement when the confidence gate rejects
+them. Difficult observations are retained in an active-learning buffer.
 
-The project will be built incrementally. Phase 1 creates the repository architecture, configuration system, documentation placeholders, and sanity tests. Later phases will add NS-3 installation, C++ wireless simulations, dataset generation, ML training, optimization, evaluation, and research plots.
+The implementation is designed for studying whether uncertainty-aware
+machine-learning decisions can improve wireless-network performance under
+changing network conditions. It does not claim measured hardware or
+unexecuted experimental results.
+
+The production path is under `backend/aurora`; the legacy `src/` package is
+retained for compatibility with the original channel-selection scaffold.
 
 ## Research Question
 
 Can machine-learning-based decision-making improve wireless network performance under dynamically changing communication conditions compared with conventional optimization approaches?
 
-## Phase 1 Scope
+## Implemented capabilities
 
-Completed in this phase:
+- Configurable dynamic wireless scenarios with SNR, CSI error, mobility,
+  environment, RIS size, and phase resolution.
+- CSI feature extraction, k-nearest-neighbor wireless graphs, and a
+  torch-only GNN + GRU forward path.
+- Physically valid RIS phase quantization, confidence/uncertainty scoring,
+  Mahalanobis OOD detection, and configurable confidence gating.
+- Classical coordinate refinement, active-learning buffering, baselines,
+  reproducible experiment execution, and FastAPI endpoints.
+- Minimal React + TypeScript + Plotly dashboard and Docker packaging.
 
-- GitHub-ready repository layout.
-- Configuration-driven project settings in `config/config.yaml`.
-- Python package skeleton under `src/`.
-- Baseline deterministic channel-selection policy.
-- Metric formula utilities for throughput, PDR, BER, latency, energy, and spectrum efficiency.
-- Documentation skeleton for architecture, methodology, and research gap.
-- Placeholder directories for NS-3 simulations, datasets, results, and notebooks.
-- Tests that can run with `pytest` after dependency installation.
+All performance figures produced by experiments are measurements from the
+selected simulator. Unexecuted experiments remain **not yet measured**.
 
-Not completed yet:
+## AURORA-RIS backend
 
-- NS-3 installation.
-- NS-3 C++ wireless simulation.
-- Real generated dataset.
-- Random Forest and XGBoost training runs.
-- AI vs conventional numerical results.
-- Literature-review citations.
+The reproducible AURORA-RIS core is under `backend/aurora`, with a FastAPI
+surface in `backend/app`. It defaults to a deterministic NumPy simulator and
+does not require Sionna or `torch-geometric`; torch is used by the optional
+GNN+GRU policy when installed. Start the API with:
 
-All experimental numbers remain **Experiment pending** until real simulations are executed.
+```bash
+uvicorn backend.app.main:app --reload
+python experiments/run_aurora.py
+```
+
+The `/optimize` response includes quantized RIS phases, a confidence/OOD gate,
+classical coordinate refinement, model/active-learning metadata, and auditable
+throughput/SINR/energy metrics. The same validated request is available at
+`/api/simulation/run`, `/api/optimization/run`, `/api/aurora/predict`, and
+`/api/aurora/optimize`; discovery endpoints are provided under
+`/api/experiments`, `/api/metrics`, `/api/models`, and
+`/api/active-learning/retrain`. Requests can set `snr_db`, `csi_error`,
+`mobility`, `environment`, and `phase_resolution`.
+The fallback is for development and reproducibility, not measured hardware
+performance.
 
 ## Repository Structure
 
@@ -89,24 +114,13 @@ If dependencies are not installed yet, a standard-library smoke test can still b
 python3 -m unittest discover -s tests
 ```
 
-## Planned Development Phases
+## API endpoints
 
-1. Repository and project architecture.
-2. NS-3 installation and verification.
-3. Basic wireless network simulation.
-4. Dynamic wireless conditions.
-5. Dataset generation.
-6. Conventional baseline.
-7. Python preprocessing.
-8. Random Forest model.
-9. XGBoost model.
-10. Optimization integration.
-11. AI vs conventional experiments.
-12. Metrics and visualization.
-13. Testing.
-14. Docker and reproducibility.
-15. Research documentation.
-16. Final report and presentation material.
+The FastAPI application exposes `/health`, `/optimize`, and the specified
+`/api/simulation/run`, `/api/optimization/run`, `/api/aurora/predict`,
+`/api/aurora/optimize`, `/api/experiments`, `/api/experiments/run`,
+`/api/experiments/{id}`, `/api/metrics`, `/api/models`, and
+`/api/active-learning/retrain` routes.
 
 ## Baseline Choice
 
@@ -115,4 +129,3 @@ The first deterministic baseline is lowest-interference channel selection with d
 ## Reproducibility Rule
 
 Do not report numerical wireless performance until NS-3 simulations and evaluation scripts have actually been executed. Use "Experiment pending" in reports until then.
-

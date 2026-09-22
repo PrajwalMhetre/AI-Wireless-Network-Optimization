@@ -43,3 +43,6 @@ simulation/ns3/ns-3*/
 .idea/
 .vscode/
 
+# JavaScript dependencies and build output
+dashboard/node_modules/
+dashboard/dist/

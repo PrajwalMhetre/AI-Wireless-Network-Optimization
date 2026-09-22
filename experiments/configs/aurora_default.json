@@ -1,0 +1,9 @@
+{
+  "seed": 42,
+  "simulator": "numpy",
+  "confidence_threshold": 0.6,
+  "phase_bits": 2,
+  "users": 4,
+  "elements": 16,
+  "channels": 8
+}

@@ -1,0 +1,26 @@
+services:
+  aurora-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      AURORA_DATABASE_URL: postgresql://aurora:aurora@postgres:5432/aurora
+    depends_on:
+      - postgres
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aurora
+      POSTGRES_PASSWORD: aurora
+      POSTGRES_DB: aurora
+    volumes:
+      - aurora-postgres:/var/lib/postgresql/data
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "5173:5173"
+    depends_on:
+      - aurora-api
+
+volumes:
+  aurora-postgres:
