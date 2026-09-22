@@ -141,7 +141,8 @@ npm run dev
 ```
 
 Open `http://localhost:5173/#output`. The API proxy in
-`dashboard/vite.config.ts` forwards requests to port 8000.
+`dashboard/vite.config.ts` forwards requests to port 8000. In Docker Compose,
+the proxy automatically uses the internal `aurora-api` service name.
 
 ## How the project works
 

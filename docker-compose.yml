@@ -19,6 +19,8 @@ services:
     build: ./dashboard
     ports:
       - "5173:5173"
+    environment:
+      AURORA_API_URL: http://aurora-api:8000
     depends_on:
       - aurora-api
 
