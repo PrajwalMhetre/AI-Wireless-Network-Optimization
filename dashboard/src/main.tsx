@@ -3,6 +3,13 @@ import { createRoot } from "react-dom/client";
 import Plotly from "plotly.js-dist-min";
 import "./styles.css";
 
+type NumericResult = {
+  throughput_mbps?: number;
+  mean_sinr_db?: number;
+  energy_j?: number;
+  spectral_efficiency_bps_hz?: number;
+};
+
 type Result = {
   channels: number[];
   phases: number[];
@@ -10,18 +17,48 @@ type Result = {
   gate_reason: string;
   confidence: number;
   ood_score: number;
-  metrics: {
-    throughput_mbps: number;
-    mean_sinr_db: number;
-    energy_j: number;
-    spectral_efficiency_bps_hz: number;
-  };
-  simulation: { per_user_throughput_mbps: number[] };
+  metrics: NumericResult & { [key: string]: number | undefined };
+  simulation: { per_user_throughput_mbps?: number[]; [key: string]: unknown };
   optimizer_metadata: {
     refinement_invoked?: boolean;
     pipeline?: string[];
     active_learning_buffer_size?: number;
+    runtime_ms?: number;
+    objective_evaluations?: number;
+    optimizer_iterations?: number;
   };
+  decision?: {
+    controller_decision?: string;
+    optimizer_called?: boolean;
+    reason?: string;
+  };
+  gate?: {
+    passed?: boolean;
+    confidence_threshold?: number;
+    ood_threshold?: number;
+    reason?: string;
+  };
+  optimizer?: {
+    called?: boolean;
+    iterations?: number;
+    objective_evaluations?: number;
+    runtime_ms?: number;
+    model?: string;
+  };
+  ris?: {
+    phases?: number[];
+    phase_resolution_bits?: number;
+  };
+  comparison?: {
+    before_refinement?: NumericResult;
+    after_refinement?: NumericResult;
+  };
+  scenario?: {
+    num_users?: number;
+    environment?: string;
+    phase_resolution?: number;
+  };
+  experiment_id?: string;
 };
 
 type FormValues = {
@@ -44,6 +81,13 @@ const defaults: FormValues = {
   environment: "urban",
 };
 
+function formatNumber(value: number | undefined, suffix = "", digits = 3) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "NOT MEASURED";
+  }
+  return `${value.toFixed(digits)}${suffix}`;
+}
+
 function App() {
   const [values, setValues] = useState(defaults);
   const [result, setResult] = useState<Result | null>(null);
@@ -60,21 +104,28 @@ function App() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ ...values, seed: 42 }),
       });
-      if (!response.ok) throw new Error(`API request failed (${response.status})`);
-      setResult(await response.json() as Result);
-      window.location.hash = "output";
+      if (!response.ok) {
+        throw new Error("Backend unavailable. Unable to run experiment. Retry.");
+      }
+      const payload = (await response.json()) as Result;
+      setResult(payload);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Request failed");
+      const message = requestError instanceof Error
+        ? requestError.message
+        : "Backend unavailable. Unable to run experiment. Retry.";
+      setError(message);
+      setResult(null);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    if (!result) return;
+    if (!result || !Array.isArray(result.simulation?.per_user_throughput_mbps)) return;
+    const perUser = result.simulation.per_user_throughput_mbps as number[];
     Plotly.newPlot("throughput-chart", [{
-      x: result.simulation.per_user_throughput_mbps.map((_, index) => `UE ${index + 1}`),
-      y: result.simulation.per_user_throughput_mbps,
+      x: perUser.map((_, index) => `UE ${index + 1}`),
+      y: perUser,
       type: "bar",
       marker: { color: "#39d0c8" },
     }], {
@@ -91,13 +142,20 @@ function App() {
     setValues((current) => ({ ...current, [key]: key === "environment" ? value : Number(value) }));
   };
 
+  const decisionLabel = result?.decision?.controller_decision || (result?.accepted ? "AI_ACCEPTED" : "CLASSICAL_REFINEMENT");
+  const decisionClass = decisionLabel === "AI_ACCEPTED" ? "badge good" : "badge warn";
+  const gateReason = result?.decision?.reason || result?.gate?.reason || result?.gate_reason || "NOT AVAILABLE";
+  const optimizerCalled = typeof result?.decision?.optimizer_called === "boolean"
+    ? result.decision.optimizer_called
+    : Boolean(result?.optimizer_metadata?.refinement_invoked);
+
   return (
     <main className="shell">
       <header className="hero">
         <div>
           <p className="eyebrow">AURORA-RIS / DYNAMIC 6G</p>
           <h1>Adaptive RIS Optimization</h1>
-          <p className="subtitle">Run a scenario, inspect the confidence gate, and view the measured simulation output on a separate result page.</p>
+          <p className="subtitle">Controller decision, gate thresholds, and live measurements are rendered only from the backend response.</p>
         </div>
         <a className="api-link" href="http://localhost:8000/docs" target="_blank">API docs ↗</a>
       </header>
@@ -113,30 +171,36 @@ function App() {
           <label>Users<input type="number" min="1" value={values.num_users} onChange={(e) => update("num_users", e.target.value)} /></label>
           <label>Environment<select value={values.environment} onChange={(e) => update("environment", e.target.value)}><option>urban</option><option>indoor</option><option>suburban</option><option>rural</option></select></label>
           <button disabled={loading}>{loading ? "Running..." : "Run optimization"}</button>
-          {error && <p className="error">{error}. Start the API with <code>uvicorn backend.app.main:app --reload</code>.</p>}
+          {error && <p className="error">{error}</p>}
         </form>
 
         <section className="panel output">
           <div className="output-heading">
             <div><p className="eyebrow">OUTPUT PAGE</p><h2>Experiment result</h2></div>
-            {result && <span className={result.accepted ? "badge good" : "badge warn"}>{result.accepted ? "AI ACCEPTED" : "CLASSICAL REFINEMENT"}</span>}
+            {result && <span className={decisionClass}>{decisionLabel}</span>}
           </div>
           {!result ? <div className="empty"><strong>No output yet</strong><span>Configure the scenario and click “Run optimization”. Results will appear here.</span></div> : (
             <>
               <div className="cards">
-                <Metric label="Throughput" value={`${result.metrics.throughput_mbps.toFixed(3)} Mbps`} />
-                <Metric label="Mean SINR" value={`${result.metrics.mean_sinr_db.toFixed(3)} dB`} />
-                <Metric label="Confidence" value={result.confidence.toFixed(3)} />
-                <Metric label="OOD score" value={result.ood_score.toFixed(3)} />
+                <Metric label="Throughput" value={formatNumber(result.metrics?.throughput_mbps, " Mbps")} />
+                <Metric label="Mean SINR" value={formatNumber(result.metrics?.mean_sinr_db, " dB")} />
+                <Metric label="Confidence" value={formatNumber(result.confidence, "", 3)} />
+                <Metric label="OOD score" value={formatNumber(result.ood_score, "", 3)} />
+                <Metric label="Energy" value={formatNumber(result.metrics?.energy_j, " J")} />
+                <Metric label="Model" value={result.optimizer?.model || result.optimizer_metadata?.pipeline?.join(" → ") || "NOT AVAILABLE"} />
               </div>
               <div id="throughput-chart" className="chart" />
               <div className="details">
-                <span><b>Gate:</b> {result.gate_reason}</span>
-                <span><b>Channels:</b> {result.channels.join(", ")}</span>
-                <span><b>Optimizer called:</b> {result.optimizer_metadata.refinement_invoked ? "Yes" : "No"}</span>
-                <span><b>Pipeline:</b> {result.optimizer_metadata.pipeline?.join(" → ")}</span>
-                <span><b>Energy:</b> {result.metrics.energy_j.toFixed(5)} J</span>
-                <span><b>Active samples:</b> {result.optimizer_metadata.active_learning_buffer_size ?? 0}</span>
+                <span><b>Decision:</b> {decisionLabel}</span>
+                <span><b>Reason:</b> {gateReason}</span>
+                <span><b>Gate passed:</b> {String(result.gate?.passed ?? result.accepted)}</span>
+                <span><b>Thresholds:</b> {formatNumber(result.gate?.confidence_threshold, "", 3)} / {formatNumber(result.gate?.ood_threshold, "", 3)}</span>
+                <span><b>Optimizer called:</b> {optimizerCalled ? "Yes" : "No"}</span>
+                <span><b>Runtime:</b> {formatNumber(result.optimizer?.runtime_ms ?? result.optimizer_metadata?.runtime_ms, " ms")}</span>
+                <span><b>RIS phases:</b> {Array.isArray(result.ris?.phases) && result.ris.phases.length > 0 ? result.ris.phases.map((value) => value.toFixed(3)).join(", ") : "NOT AVAILABLE"}</span>
+                <span><b>Before refinement throughput:</b> {formatNumber(result.comparison?.before_refinement?.throughput_mbps, " Mbps")}</span>
+                <span><b>After refinement throughput:</b> {formatNumber(result.comparison?.after_refinement?.throughput_mbps, " Mbps")}</span>
+                <span><b>Experiment ID:</b> {result.experiment_id || "NOT AVAILABLE"}</span>
               </div>
             </>
           )}

@@ -122,6 +122,12 @@ The FastAPI application exposes `/health`, `/optimize`, and the specified
 `/api/experiments/{id}`, `/api/metrics`, `/api/models`, and
 `/api/active-learning/retrain` routes.
 
+- `http://localhost:5173` = AURORA Dashboard
+- `http://localhost:8000/docs` = FastAPI Swagger UI
+- `/project-docs` = browser-friendly project docs when needed
+
+Do not mount markdown files on `/docs`; that route is reserved for Swagger.
+
 ## Output page
 
 The dashboard provides a separate interactive output view. It sends the
@@ -161,6 +167,31 @@ the proxy automatically uses the internal `aurora-api` service name.
    buffer.
 6. The output page presents the actual response returned by the API; it does
    not fabricate benchmark results.
+
+## Confidence gate
+
+The authoritative gate is in the backend controller, not in the frontend. A
+prediction is accepted only if:
+
+- confidence >= confidence_threshold
+- OOD <= ood_threshold
+
+The default threshold set is 0.75 and 0.5 respectively. If either check fails,
+`CLASSICAL_REFINEMENT` is returned and the optimizer is invoked.
+
+## OOD and active learning
+
+OOD is estimated with the Mahalanobis distance of the current feature summary
+relative to the reference distribution. Larger OOD values indicate a larger
+shift from the training scenario. Observations that are uncertain or near the
+decision boundary are kept in the active-learning buffer for later retraining.
+
+## Classical fallback
+
+When a learned decision fails the gate, the controller chooses the lowest-
+interference channel selection and runs coordinate descent over RIS phases to
+refine the solution using the observed objective value. The frontend only shows
+that final backend decision and metrics.
 
 ## Deployment
 

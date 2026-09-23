@@ -23,8 +23,8 @@ class OptimizeRequest(BaseModel):
     mobility: float = Field(default=0.0, ge=0.0, le=1000.0)
     mobility_mps: float | None = Field(default=None, ge=0.0, le=1000.0)
     environment: str = Field(default="urban", min_length=1, max_length=64)
-    confidence_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
-    ood_threshold: float = Field(default=12.0, gt=0.0)
+    confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    ood_threshold: float = Field(default=0.5, gt=0.0)
     max_ood_score: float | None = Field(default=None, gt=0.0)
 
 
@@ -40,6 +40,14 @@ class OptimizeResponse(BaseModel):
     optimizer_metadata: dict[str, Any] = Field(default_factory=dict)
     active_learning_reason: str | None = None
     uncertainty: float = 0.0
+    experiment_id: str = ""
+    scenario: dict[str, Any] = Field(default_factory=dict)
+    prediction: dict[str, Any] = Field(default_factory=dict)
+    gate: dict[str, Any] = Field(default_factory=dict)
+    decision: dict[str, Any] = Field(default_factory=dict)
+    optimizer: dict[str, Any] = Field(default_factory=dict)
+    ris: dict[str, Any] = Field(default_factory=dict)
+    comparison: dict[str, Any] = Field(default_factory=dict)
 
 
 class HealthResponse(BaseModel):

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+import time
+
 import numpy as np
 
 from .active_learning import ActiveLearningBuffer, Observation
@@ -23,7 +25,7 @@ except ImportError:  # pragma: no cover - exercised in minimal installations
     torch = None
 
 
-@dataclass(frozen=True)
+@dataclass
 class OptimizationResult:
     channels: list[int]
     phases: list[float]
@@ -36,6 +38,14 @@ class OptimizationResult:
     optimizer_metadata: dict[str, Any] = field(default_factory=dict)
     active_learning_reason: str | None = None
     uncertainty: float = 0.0
+    experiment_id: str = ""
+    scenario: dict[str, Any] = field(default_factory=dict)
+    prediction: dict[str, Any] = field(default_factory=dict)
+    gate: dict[str, Any] = field(default_factory=dict)
+    decision: dict[str, Any] = field(default_factory=dict)
+    optimizer: dict[str, Any] = field(default_factory=dict)
+    ris: dict[str, Any] = field(default_factory=dict)
+    comparison: dict[str, Any] = field(default_factory=dict)
 
 
 class AURORAController:
@@ -164,6 +174,7 @@ class AURORAController:
         }
 
     def optimize(self, scenario: Scenario | dict[str, Any] | None = None) -> OptimizationResult:
+        started_at = time.perf_counter()
         state = scenario_from_mapping(scenario) if isinstance(scenario, dict) else (
             scenario or self.scenario
         )
@@ -187,16 +198,21 @@ class AURORAController:
         if ood_score > self.gate.max_ood_score:
             reasons.append("out_of_distribution")
         active_reason = ";".join(reasons) if reasons else (None if gate.accept else gate.reason)
+        pre_refinement_phases = quantize_phases(np.asarray(phases, dtype=float), state.config.ris_phase_bits)
+        pre_refinement_channels = np.asarray(channels, dtype=int)
+        pre_refinement_sim = self.simulator.run(state, pre_refinement_channels, pre_refinement_phases)
+        optimizer_stats = {"objective_evaluations": 0, "iterations": 0}
         if refinement_invoked:
             # Unsafe learned actions are replaced by the conservative channel
             # baseline and classical phase refinement.
             channels = lowest_interference(state.interference_dbm)
             phases = coordinate_refine(
-                quantize_phases(phases, state.config.ris_phase_bits),
+                quantize_phases(pre_refinement_phases, state.config.ris_phase_bits),
                 lambda p: self._score(state, channels, p),
+                stats=optimizer_stats,
             )
         else:
-            phases = quantize_phases(phases, state.config.ris_phase_bits)
+            phases = quantize_phases(pre_refinement_phases, state.config.ris_phase_bits)
 
         sim = self.simulator.run(state, channels, phases)
         uncertainty = float(np.clip(
@@ -230,12 +246,73 @@ class AURORAController:
             "ood_threshold": self.gate.max_ood_score,
             "active_learning_buffer_size": len(self.buffer),
             "active_learning_reason": active_reason,
+            "optimizer_iterations": int(optimizer_stats.get("iterations", 0)),
+            "objective_evaluations": int(optimizer_stats.get("objective_evaluations", 0)),
+            "runtime_ms": round((time.perf_counter() - started_at) * 1000.0, 3),
         }
-        return OptimizationResult(
+        decision = {
+            "controller_decision": "AI_ACCEPTED" if gate.accept else "CLASSICAL_REFINEMENT",
+            "optimizer_called": refinement_invoked,
+            "reason": "confidence >= threshold and OOD <= threshold" if gate.accept else gate.reason,
+        }
+        result = OptimizationResult(
             channels.tolist(), phases.tolist(), gate.accept, gate.reason,
             confidence, ood_score, sim.to_dict(), metrics, metadata, active_reason,
             uncertainty,
         )
+        result.experiment_id = f"aurora-{int(started_at * 1000)}"
+        result.scenario = {
+            "num_users": int(state.config.num_users),
+            "num_elements": int(state.config.num_elements),
+            "num_channels": int(state.config.num_channels),
+            "phase_resolution": int(state.config.phase_resolution),
+            "environment": state.config.environment,
+            "snr_db": float(state.config.snr_db),
+            "csi_error": float(state.config.csi_error),
+            "mobility": float(state.config.mobility),
+            "seed": int(state.config.seed),
+        }
+        result.prediction = {
+            "confidence": float(confidence),
+            "ood_score": float(ood_score),
+            "uncertainty": float(uncertainty),
+        }
+        result.gate = {
+            "passed": bool(gate.accept),
+            "confidence_threshold": float(self.gate.min_confidence),
+            "ood_threshold": float(self.gate.max_ood_score),
+            "reason": gate.reason,
+        }
+        result.decision = decision
+        result.optimizer = {
+            "called": bool(refinement_invoked),
+            "iterations": int(optimizer_stats.get("iterations", 0)),
+            "objective_evaluations": int(optimizer_stats.get("objective_evaluations", 0)),
+            "runtime_ms": float(metadata["runtime_ms"]),
+            "model": model_metadata.get("model", "deterministic-baseline"),
+            "pipeline": metadata["pipeline"],
+        }
+        result.ris = {
+            "elements": int(state.config.num_elements),
+            "phase_resolution_bits": int(state.config.phase_resolution),
+            "phases": [float(x) for x in phases.tolist()],
+            "quantized": True,
+        }
+        result.comparison = {
+            "before_refinement": {
+                "throughput_mbps": float(pre_refinement_sim.throughput_mbps),
+                "mean_sinr_db": float(np.mean(pre_refinement_sim.sinr_db)),
+                "energy_j": float(pre_refinement_sim.energy_j),
+                "spectral_efficiency_bps_hz": float(pre_refinement_sim.spectral_efficiency),
+            },
+            "after_refinement": {
+                "throughput_mbps": float(sim.throughput_mbps),
+                "mean_sinr_db": float(np.mean(sim.sinr_db)),
+                "energy_j": float(sim.energy_j),
+                "spectral_efficiency_bps_hz": float(sim.spectral_efficiency),
+            },
+        }
+        return result
 
     def predict(self, scenario: Scenario | dict[str, Any] | None = None) -> OptimizationResult:
         """Compatibility alias for the public prediction endpoint."""
